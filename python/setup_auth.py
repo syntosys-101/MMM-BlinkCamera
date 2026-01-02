@@ -69,24 +69,35 @@ async def main():
         }, no_prompt=True, session=session)
         blink.auth = auth
 
+        login_success = False
         needs_2fa = False
         
         try:
             await blink.start()
-            print("✓ Logged in!")
+            
+            # Check if login actually succeeded
+            if blink.auth.token and blink.account_id:
+                login_success = True
+                print("✓ Logged in!")
+            else:
+                print("\n✗ Login completed but missing auth data")
+                check = input("Did you receive a 2FA code? [y/N]: ").strip().lower()
+                if check == "y":
+                    needs_2fa = True
+                else:
+                    print("Login failed. Please check your credentials.")
+                    sys.exit(1)
             
         except Exception as e:
             err_str = str(e).lower()
             err_type = type(e).__name__
             
-            print(f"\nDEBUG: Exception type: {err_type}")
-            print(f"DEBUG: Exception message: {e}")
+            print(f"\nLogin exception: {e}")
             
             if any(x in err_str for x in ["2fa", "pin", "verify", "key", "email", "code"]) or \
                any(x in err_type.lower() for x in ["2fa", "twofactor"]):
                 needs_2fa = True
             else:
-                print(f"\n✗ Login error: {e}")
                 check = input("\nDid you receive a 2FA code on your phone/email? [y/N]: ").strip().lower()
                 if check == "y":
                     needs_2fa = True
@@ -111,26 +122,46 @@ async def main():
             try:
                 await blink.send_2fa_code(pin)
                 await blink.setup_post_verify()
-                print("✓ Verified!")
+                
+                # Verify it worked
+                if blink.auth.token and blink.account_id:
+                    login_success = True
+                    print("✓ Verified!")
+                else:
+                    print("✗ Verification seemed to work but auth data is missing")
+                    sys.exit(1)
+                    
             except Exception as e2:
                 print(f"✗ Verification failed: {e2}")
                 sys.exit(1)
+
+        if not login_success:
+            print("✗ Login was not successful")
+            sys.exit(1)
 
         # Save full credentials with all auth data
         creds = {
             "username": email,
             "device_id": "MagicMirror-BlinkCamera",
             "awaiting_2fa": False,
+            "token": blink.auth.token,
+            "host": blink.auth.host,
+            "region_id": blink.auth.region_id,
+            "client_id": blink.auth.client_id,
+            "account_id": blink.auth.account_id,
         }
         
-        # Get all auth attributes
-        auth_attrs = ["token", "host", "region_id", "client_id", "account_id", 
-                      "user_id", "refresh_token", "expires_in"]
-        for attr in auth_attrs:
+        # Add optional attributes if they exist
+        for attr in ["user_id", "refresh_token", "expires_in"]:
             if hasattr(blink.auth, attr):
                 val = getattr(blink.auth, attr)
                 if val is not None:
                     creds[attr] = val
+        
+        # Also save URLs base
+        if hasattr(blink, 'urls') and blink.urls:
+            if hasattr(blink.urls, 'base_url'):
+                creds["base_url"] = blink.urls.base_url
         
         creds_file.write_text(json.dumps(creds, indent=2))
         print("✓ Saved authentication")
@@ -138,23 +169,27 @@ async def main():
         print("\nDEBUG: Saved credentials contain:")
         for k, v in creds.items():
             if k in ["token", "refresh_token", "password"]:
-                print(f"  {k}: {'*' * 10 if v else 'None'}")
+                print(f"  {k}: {'[SAVED]' if v else 'None'}")
             else:
                 print(f"  {k}: {v}")
 
         # List cameras
-        await blink.refresh()
-        
-        print("\n" + "-" * 40)
-        print("  Your Cameras")
-        print("-" * 40)
-        
-        if blink.cameras:
-            for name, cam in blink.cameras.items():
-                status = "Armed" if cam.arm else "Disarmed"
-                print(f"  • {name} ({status})")
-        else:
-            print("  No cameras found")
+        try:
+            await blink.refresh()
+            
+            print("\n" + "-" * 40)
+            print("  Your Cameras")
+            print("-" * 40)
+            
+            if blink.cameras:
+                for name, cam in blink.cameras.items():
+                    status = "Armed" if cam.arm else "Disarmed"
+                    print(f"  • {name} ({status})")
+            else:
+                print("  No cameras found")
+        except Exception as e:
+            print(f"\nWarning: Could not list cameras: {e}")
+            print("But authentication is saved. Try restarting MagicMirror.")
 
         print("\n" + "=" * 50)
         print("  Setup Complete!")
