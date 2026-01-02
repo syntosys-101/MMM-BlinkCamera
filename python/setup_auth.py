@@ -110,61 +110,23 @@ async def main():
             print("Verifying...")
             
             try:
-                # Try different methods depending on blinkpy version
-                verified = False
+                # Use the correct method for blinkpy 0.25.x
+                # Method 1: blink.send_2fa_code (primary method)
+                if hasattr(blink, 'send_2fa_code'):
+                    await blink.send_2fa_code(pin)
+                # Method 2: auth.complete_2fa_login
+                elif hasattr(blink.auth, 'complete_2fa_login'):
+                    await blink.auth.complete_2fa_login(pin)
+                else:
+                    raise Exception("No 2FA method found in blinkpy")
                 
-                # Method 1: Try blink.auth.send_auth_key (older versions)
-                if hasattr(blink.auth, 'send_auth_key'):
-                    await blink.auth.send_auth_key(blink, pin)
-                    verified = True
-                
-                # Method 2: Try blinkpy.helpers.util (some versions)
-                if not verified:
-                    try:
-                        from blinkpy.helpers.util import send_auth_key
-                        await send_auth_key(blink, pin)
-                        verified = True
-                    except ImportError:
-                        pass
-                
-                # Method 3: Try validate_login + setup_post_verify
-                if not verified:
-                    if hasattr(blink.auth, 'validate_login'):
-                        await blink.auth.validate_login(blink, pin)
-                        verified = True
-                
-                # Method 4: Direct API approach for newer versions
-                if not verified:
-                    if hasattr(blink.auth, 'login_handler'):
-                        await blink.auth.login_handler.send_auth_key(blink, pin)
-                        verified = True
-
-                # Method 5: Check for async_send_auth_key
-                if not verified:
-                    if hasattr(blink.auth, 'async_send_auth_key'):
-                        await blink.auth.async_send_auth_key(blink, pin)
-                        verified = True
-                
-                # Method 6: Try setting key directly and completing setup
-                if not verified:
-                    blink.key_required = False
-                    blink.auth.data["2fa_token"] = pin
-                    await blink.setup_login_ids()
-                    await blink.setup_urls()
-                    verified = True
-
-                # Complete setup
-                if hasattr(blink, 'setup_post_verify'):
-                    await blink.setup_post_verify()
+                # Complete setup after 2FA
+                await blink.setup_post_verify()
                 
                 print("✓ Verified!")
                 
             except Exception as e2:
                 print(f"✗ Verification failed: {e2}")
-                print("\nDEBUG: Available auth methods:")
-                print([m for m in dir(blink.auth) if not m.startswith('_')])
-                print("\nDEBUG: Available blink methods:")
-                print([m for m in dir(blink) if not m.startswith('_')])
                 sys.exit(1)
 
         # Save credentials
