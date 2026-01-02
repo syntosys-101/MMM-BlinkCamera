@@ -22,6 +22,10 @@ Module.register("MMM-BlinkCamera", {
         displayMode: "carousel",             // carousel, grid, single
         carouselInterval: 10000,             // 10 seconds
         retryDelay: 30000,                   // Retry on error after 30s
+        doorbellMonitor: true,               // Monitor for doorbell presses
+        doorbellSound: "doorbell.mp3",       // Sound file to play
+        doorbellDuration: 15000,             // How long to show doorbell popup (15s)
+        doorbellVolume: 0.8,                 // Volume 0-1
     },
 
     // Required scripts
@@ -48,6 +52,9 @@ Module.register("MMM-BlinkCamera", {
         this.requires2FA = false;
         this.motionVideo = null;
         this.carouselTimer = null;
+        this.doorbellAlert = null;
+        this.doorbellTimer = null;
+        this.audioElement = null;
 
         // Validate required config
         if (!this.config.email || !this.config.password) {
@@ -64,6 +71,12 @@ Module.register("MMM-BlinkCamera", {
     getDom: function() {
         const wrapper = document.createElement("div");
         wrapper.className = "blink-wrapper";
+
+        // Doorbell alert (highest priority - shows over everything)
+        if (this.doorbellAlert) {
+            wrapper.appendChild(this.createDoorbellAlert());
+            return wrapper;
+        }
 
         // Error state
         if (this.error) {
@@ -261,6 +274,136 @@ Module.register("MMM-BlinkCamera", {
         return container;
     },
 
+    // Create doorbell alert element
+    createDoorbellAlert: function() {
+        const container = document.createElement("div");
+        container.className = "blink-doorbell-alert";
+
+        const header = document.createElement("div");
+        header.className = "blink-doorbell-header";
+        header.innerHTML = '<span class="blink-doorbell-icon">🔔</span> DOORBELL';
+        container.appendChild(header);
+
+        const camera = document.createElement("div");
+        camera.className = "blink-doorbell-camera";
+        camera.textContent = this.doorbellAlert.camera;
+        container.appendChild(camera);
+
+        const time = document.createElement("div");
+        time.className = "blink-doorbell-time";
+        time.textContent = this.doorbellAlert.time;
+        container.appendChild(time);
+
+        // Image
+        if (this.doorbellAlert.hasImage) {
+            const imgContainer = document.createElement("div");
+            imgContainer.className = "blink-doorbell-image-container";
+            
+            const img = document.createElement("img");
+            img.className = "blink-doorbell-image";
+            img.src = "/" + this.name + "/camera/" + encodeURIComponent(this.doorbellAlert.camera) + "?t=" + Date.now();
+            img.alt = "Doorbell";
+            imgContainer.appendChild(img);
+            container.appendChild(imgContainer);
+        }
+
+        return container;
+    },
+
+    // Play doorbell sound
+    playDoorbellSound: function() {
+        const self = this;
+        
+        // Stop any existing sound
+        if (this.audioElement) {
+            this.audioElement.pause();
+            this.audioElement = null;
+        }
+
+        // Create audio element
+        this.audioElement = new Audio();
+        this.audioElement.volume = this.config.doorbellVolume;
+        
+        // Try module's sound file first, then fallback to a generated tone
+        const soundPath = "/" + this.name + "/sounds/" + this.config.doorbellSound;
+        
+        this.audioElement.src = soundPath;
+        this.audioElement.onerror = function() {
+            // Fallback: generate a simple doorbell tone using Web Audio API
+            self.playGeneratedDoorbell();
+        };
+        
+        this.audioElement.play().catch(function(e) {
+            Log.warn("MMM-BlinkCamera: Could not play sound: " + e);
+            self.playGeneratedDoorbell();
+        });
+    },
+
+    // Generate doorbell sound using Web Audio API
+    playGeneratedDoorbell: function() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const volume = this.config.doorbellVolume;
+            
+            // Play two-tone doorbell (ding-dong)
+            const playTone = function(freq, startTime, duration) {
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                oscillator.frequency.value = freq;
+                oscillator.type = "sine";
+                
+                gainNode.gain.setValueAtTime(volume * 0.3, startTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+                
+                oscillator.start(startTime);
+                oscillator.stop(startTime + duration);
+            };
+            
+            const now = audioCtx.currentTime;
+            playTone(830, now, 0.5);        // Ding (high)
+            playTone(660, now + 0.5, 0.7);  // Dong (low)
+            
+            // Repeat once
+            playTone(830, now + 1.5, 0.5);
+            playTone(660, now + 2.0, 0.7);
+            
+        } catch (e) {
+            Log.warn("MMM-BlinkCamera: Could not generate sound: " + e);
+        }
+    },
+
+    // Show doorbell alert
+    showDoorbellAlert: function(payload) {
+        const self = this;
+        
+        // Clear any existing timer
+        if (this.doorbellTimer) {
+            clearTimeout(this.doorbellTimer);
+        }
+        
+        // Set alert data
+        this.doorbellAlert = payload;
+        
+        // Play sound
+        this.playDoorbellSound();
+        
+        // Update display
+        this.updateDom();
+        
+        // Auto-dismiss after duration
+        this.doorbellTimer = setTimeout(function() {
+            self.doorbellAlert = null;
+            self.doorbellTimer = null;
+            self.updateDom();
+            // Refresh cameras to get latest image
+            self.sendSocketNotification("REFRESH", {});
+        }, this.config.doorbellDuration);
+    },
+
     // Start carousel rotation
     startCarousel: function() {
         if (this.carouselTimer) {
@@ -330,6 +473,12 @@ Module.register("MMM-BlinkCamera", {
                 if (this.config.showMotionVideos && payload && payload.camera) {
                     this.motionVideo = payload;
                     this.updateDom();
+                }
+                break;
+
+            case "DOORBELL":
+                if (payload && payload.camera) {
+                    this.showDoorbellAlert(payload);
                 }
                 break;
         }

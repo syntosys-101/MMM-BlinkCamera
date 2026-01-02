@@ -18,6 +18,7 @@ module.exports = NodeHelper.create({
         this.started = false;
         this.updateTimer = null;
         this.motionTimer = null;
+        this.doorbellProcess = null;
         this.pythonDir = path.join(__dirname, "python");
         this.imagesDir = path.join(__dirname, "images");
         
@@ -59,6 +60,19 @@ module.exports = NodeHelper.create({
                 res.sendFile(videoPath);
             } else {
                 res.status(404).send("Video not found");
+            }
+        });
+
+        // Route: GET /MMM-BlinkCamera/sounds/:file
+        this.expressApp.get("/" + this.name + "/sounds/:file", function(req, res) {
+            const soundFile = decodeURIComponent(req.params.file);
+            const soundPath = path.join(__dirname, "sounds", soundFile);
+            
+            if (fs.existsSync(soundPath)) {
+                res.setHeader("Cache-Control", "public, max-age=86400");
+                res.sendFile(soundPath);
+            } else {
+                res.status(404).send("Sound not found");
             }
         });
 
@@ -112,7 +126,8 @@ module.exports = NodeHelper.create({
         const config = {
             email: this.config.email,
             password: this.config.password,
-            device_id: "MagicMirror-BlinkCamera"
+            device_id: "MagicMirror-BlinkCamera",
+            doorbell_poll_interval: Math.max(3, Math.floor((this.config.motionCheckInterval || 30000) / 1000))
         };
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
     },
@@ -269,13 +284,111 @@ module.exports = NodeHelper.create({
             }, this.config.motionCheckInterval);
         }
 
+        // Start doorbell monitor if enabled
+        if (this.config.doorbellMonitor) {
+            this.startDoorbellMonitor();
+        }
+
         Log.log("MMM-BlinkCamera: Timers started");
+    },
+
+    // Start doorbell monitor process
+    startDoorbellMonitor: function() {
+        const self = this;
+        
+        // Kill existing process if running
+        if (this.doorbellProcess) {
+            this.doorbellProcess.kill();
+            this.doorbellProcess = null;
+        }
+
+        const scriptPath = path.join(this.pythonDir, "blink_doorbell.py");
+        
+        Log.log("MMM-BlinkCamera: Starting doorbell monitor");
+        
+        this.doorbellProcess = spawn("python3", [scriptPath, this.imagesDir], {
+            cwd: this.pythonDir
+        });
+
+        // Buffer for incomplete JSON lines
+        let buffer = "";
+
+        this.doorbellProcess.stdout.on("data", function(data) {
+            buffer += data.toString();
+            
+            // Process complete lines
+            const lines = buffer.split("\n");
+            buffer = lines.pop(); // Keep incomplete line in buffer
+            
+            lines.forEach(function(line) {
+                if (line.trim()) {
+                    try {
+                        const event = JSON.parse(line);
+                        self.handleDoorbellEvent(event);
+                    } catch (e) {
+                        Log.warn("MMM-BlinkCamera: Invalid doorbell JSON: " + line);
+                    }
+                }
+            });
+        });
+
+        this.doorbellProcess.stderr.on("data", function(data) {
+            const msg = data.toString().trim();
+            if (msg && !msg.includes("INFO")) {
+                Log.warn("MMM-BlinkCamera Doorbell: " + msg);
+            }
+        });
+
+        this.doorbellProcess.on("close", function(code) {
+            Log.log("MMM-BlinkCamera: Doorbell monitor exited with code " + code);
+            self.doorbellProcess = null;
+            
+            // Restart after delay if not intentionally stopped
+            if (self.config && self.config.doorbellMonitor) {
+                setTimeout(function() {
+                    self.startDoorbellMonitor();
+                }, 10000);
+            }
+        });
+
+        this.doorbellProcess.on("error", function(err) {
+            Log.error("MMM-BlinkCamera: Doorbell monitor error: " + err.message);
+        });
+    },
+
+    // Handle doorbell events
+    handleDoorbellEvent: function(event) {
+        Log.log("MMM-BlinkCamera: Doorbell event: " + JSON.stringify(event));
+        
+        if (event.event === "doorbell") {
+            // Doorbell pressed!
+            this.sendSocketNotification("DOORBELL", {
+                camera: event.camera,
+                time: event.time,
+                hasImage: event.hasImage
+            });
+        } else if (event.event === "motion") {
+            // Motion detected on non-doorbell camera
+            this.sendSocketNotification("MOTION", {
+                camera: event.camera,
+                time: event.time,
+                hasImage: event.hasImage
+            });
+        } else if (event.event === "started") {
+            Log.log("MMM-BlinkCamera: Doorbell monitor watching: " + event.cameras.join(", "));
+        } else if (event.event === "error") {
+            Log.error("MMM-BlinkCamera: Doorbell monitor error: " + event.error);
+        }
     },
 
     // Stop on shutdown
     stop: function() {
         if (this.updateTimer) clearInterval(this.updateTimer);
         if (this.motionTimer) clearInterval(this.motionTimer);
+        if (this.doorbellProcess) {
+            this.doorbellProcess.kill();
+            this.doorbellProcess = null;
+        }
         Log.log("MMM-BlinkCamera helper stopped");
     }
 });
