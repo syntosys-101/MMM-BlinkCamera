@@ -69,36 +69,55 @@ async def main():
         }, no_prompt=True, session=session)
         blink.auth = auth
 
+        needs_2fa = False
+        
         try:
             await blink.start()
             print("✓ Logged in!")
             
         except Exception as e:
-            err = str(e).lower()
+            err_str = str(e).lower()
+            err_type = type(e).__name__
             
-            if "2fa" in err or "pin" in err or "verify" in err:
-                print("\n" + "-" * 40)
-                print("  Two-Factor Authentication")
-                print("-" * 40)
-                print("\nBlink sent a verification code to your email/phone.")
-                
-                pin = input("\nEnter PIN: ").strip()
-                
-                if not pin:
-                    print("Cancelled.")
-                    sys.exit(1)
-                
-                print("Verifying...")
-                
-                try:
-                    await auth.send_auth_key(blink, pin)
-                    await blink.setup_post_verify()
-                    print("✓ Verified!")
-                except Exception as e2:
-                    print(f"✗ Failed: {e2}")
-                    sys.exit(1)
+            # Debug info
+            print(f"\nDEBUG: Exception type: {err_type}")
+            print(f"DEBUG: Exception message: {e}")
+            
+            # Check for various 2FA indicators
+            if any(x in err_str for x in ["2fa", "pin", "verify", "key required", "authentication key", "email", "code"]):
+                needs_2fa = True
+            elif any(x in err_type.lower() for x in ["2fa", "twofactor", "auth"]):
+                needs_2fa = True
             else:
-                print(f"✗ Login failed: {e}")
+                # If we got a 2FA code on phone, it's likely a 2FA situation
+                print(f"\n✗ Login error: {e}")
+                check = input("\nDid you receive a 2FA code on your phone/email? [y/N]: ").strip().lower()
+                if check == "y":
+                    needs_2fa = True
+                else:
+                    print("Login failed. Please check your credentials.")
+                    sys.exit(1)
+
+        if needs_2fa:
+            print("\n" + "-" * 40)
+            print("  Two-Factor Authentication")
+            print("-" * 40)
+            print("\nEnter the verification code sent to your phone/email.")
+            
+            pin = input("\nEnter PIN: ").strip()
+            
+            if not pin:
+                print("Cancelled.")
+                sys.exit(1)
+            
+            print("Verifying...")
+            
+            try:
+                await auth.send_auth_key(blink, pin)
+                await blink.setup_post_verify()
+                print("✓ Verified!")
+            except Exception as e2:
+                print(f"✗ Verification failed: {e2}")
                 sys.exit(1)
 
         # Save credentials
