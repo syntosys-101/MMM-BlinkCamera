@@ -79,24 +79,13 @@ async def main():
                     "updated": None
                 }
                 
-                # Download and save thumbnail
+                # Download and save thumbnail using blinkpy's built-in method
                 try:
-                    if hasattr(camera, "thumbnail") and camera.thumbnail:
-                        thumb_url = camera.thumbnail
-                        if thumb_url:
-                            if thumb_url.startswith("http"):
-                                full_url = thumb_url
-                            else:
-                                full_url = f"https://{blink.auth.host}{thumb_url}"
-                            
-                            headers = {"token-auth": blink.auth.token}
-                            async with session.get(full_url, headers=headers) as resp:
-                                if resp.status == 200:
-                                    image_data = await resp.read()
-                                    image_path = images_dir / f"{name}.jpg"
-                                    image_path.write_bytes(image_data)
-                                    cam_info["hasImage"] = True
-                                    cam_info["updated"] = datetime.now().strftime("%H:%M:%S")
+                    image_path = images_dir / f"{name}.jpg"
+                    await camera.image_to_file(str(image_path))
+                    if image_path.exists() and image_path.stat().st_size > 0:
+                        cam_info["hasImage"] = True
+                        cam_info["updated"] = datetime.now().strftime("%H:%M:%S")
                 except Exception as img_err:
                     sys.stderr.write(f"Image error for {name}: {img_err}\n")
                 
