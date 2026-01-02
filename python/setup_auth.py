@@ -82,7 +82,6 @@ async def main():
             print(f"\nDEBUG: Exception type: {err_type}")
             print(f"DEBUG: Exception message: {e}")
             
-            # Check for 2FA requirement
             if any(x in err_str for x in ["2fa", "pin", "verify", "key", "email", "code"]) or \
                any(x in err_type.lower() for x in ["2fa", "twofactor"]):
                 needs_2fa = True
@@ -110,38 +109,38 @@ async def main():
             print("Verifying...")
             
             try:
-                # Use the correct method for blinkpy 0.25.x
-                # Method 1: blink.send_2fa_code (primary method)
-                if hasattr(blink, 'send_2fa_code'):
-                    await blink.send_2fa_code(pin)
-                # Method 2: auth.complete_2fa_login
-                elif hasattr(blink.auth, 'complete_2fa_login'):
-                    await blink.auth.complete_2fa_login(pin)
-                else:
-                    raise Exception("No 2FA method found in blinkpy")
-                
-                # Complete setup after 2FA
+                await blink.send_2fa_code(pin)
                 await blink.setup_post_verify()
-                
                 print("✓ Verified!")
-                
             except Exception as e2:
                 print(f"✗ Verification failed: {e2}")
                 sys.exit(1)
 
-        # Save credentials
+        # Save full credentials with all auth data
         creds = {
             "username": email,
-            "token": blink.auth.token,
-            "host": blink.auth.host,
-            "region_id": blink.auth.region_id,
-            "client_id": blink.auth.client_id,
-            "account_id": blink.auth.account_id,
             "device_id": "MagicMirror-BlinkCamera",
-            "awaiting_2fa": False
+            "awaiting_2fa": False,
         }
+        
+        # Get all auth attributes
+        auth_attrs = ["token", "host", "region_id", "client_id", "account_id", 
+                      "user_id", "refresh_token", "expires_in"]
+        for attr in auth_attrs:
+            if hasattr(blink.auth, attr):
+                val = getattr(blink.auth, attr)
+                if val is not None:
+                    creds[attr] = val
+        
         creds_file.write_text(json.dumps(creds, indent=2))
         print("✓ Saved authentication")
+        
+        print("\nDEBUG: Saved credentials contain:")
+        for k, v in creds.items():
+            if k in ["token", "refresh_token", "password"]:
+                print(f"  {k}: {'*' * 10 if v else 'None'}")
+            else:
+                print(f"  {k}: {v}")
 
         # List cameras
         await blink.refresh()

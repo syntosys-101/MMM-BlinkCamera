@@ -8,7 +8,6 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
 
 async def main():
     try:
@@ -24,7 +23,6 @@ async def main():
     creds_file = script_dir / "credentials.json"
     state_file = script_dir / ".motion_state"
     
-    # Get images directory from args
     images_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else script_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
 
@@ -35,7 +33,7 @@ async def main():
     config = json.loads(config_file.read_text())
     creds = json.loads(creds_file.read_text())
 
-    if creds.get("awaiting_2fa"):
+    if creds.get("awaiting_2fa") or not creds.get("token") or not creds.get("account_id"):
         print(json.dumps({"success": False, "has_motion": False}))
         return
 
@@ -51,53 +49,48 @@ async def main():
         blink = Blink(session=session)
         
         auth_data = {
-            "username": creds.get("username", config["email"]),
-            "password": config["password"],
+            "username": creds.get("username", config.get("email")),
+            "password": config.get("password"),
             "device_id": creds.get("device_id", "MagicMirror-BlinkCamera"),
             "token": creds.get("token"),
             "host": creds.get("host"),
             "region_id": creds.get("region_id"),
             "client_id": creds.get("client_id"),
-            "account_id": creds.get("account_id")
+            "account_id": creds.get("account_id"),
+            "user_id": creds.get("user_id"),
+            "refresh_token": creds.get("refresh_token"),
         }
         
         auth = Auth(auth_data, no_prompt=True, session=session)
         blink.auth = auth
 
         try:
-            await blink.start()
+            # Use saved credentials, don't re-login
+            await blink.setup_post_verify()
             await blink.refresh()
             
             new_motion_camera = None
             
             for name, camera in blink.cameras.items():
-                # Check for motion
                 if camera.motion_detected:
                     last_seen = last_motion.get(name, "")
-                    
-                    # Get clip URL
                     clip_url = getattr(camera, "clip", None)
-                    if clip_url:
-                        # Check if this is new
-                        current_id = clip_url  # Use URL as identifier
-                        
-                        if current_id != last_seen:
-                            # New motion! Download video
-                            try:
-                                full_url = f"https://{blink.auth.host}{clip_url}" if not clip_url.startswith("http") else clip_url
-                                
-                                async with session.get(full_url, headers={"token-auth": blink.auth.token}) as resp:
-                                    if resp.status == 200:
-                                        video_data = await resp.read()
-                                        video_path = images_dir / f"{name}_motion.mp4"
-                                        video_path.write_bytes(video_data)
-                                        
-                                        new_motion_camera = name
-                                        last_motion[name] = current_id
-                            except:
-                                pass
+                    
+                    if clip_url and clip_url != last_seen:
+                        try:
+                            full_url = f"https://{blink.auth.host}{clip_url}" if not clip_url.startswith("http") else clip_url
+                            
+                            async with session.get(full_url, headers={"token-auth": blink.auth.token}) as resp:
+                                if resp.status == 200:
+                                    video_data = await resp.read()
+                                    video_path = images_dir / f"{name}_motion.mp4"
+                                    video_path.write_bytes(video_data)
+                                    
+                                    new_motion_camera = name
+                                    last_motion[name] = clip_url
+                        except:
+                            pass
             
-            # Save motion state
             state_file.write_text(json.dumps(last_motion))
             
             if new_motion_camera:

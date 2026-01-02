@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Blink Authentication for MMM-BlinkCamera
+Only used when fresh authentication is needed
 """
 
 import asyncio
@@ -26,6 +27,17 @@ async def main():
         return
 
     config = json.loads(config_file.read_text())
+    
+    # Check if we already have valid credentials
+    if creds_file.exists():
+        try:
+            creds = json.loads(creds_file.read_text())
+            if creds.get("token") and creds.get("account_id") and not creds.get("awaiting_2fa"):
+                # Already authenticated, just report success
+                print(json.dumps({"success": True, "message": "Using existing credentials"}))
+                return
+        except:
+            pass
 
     async with ClientSession() as session:
         blink = Blink(session=session)
@@ -48,6 +60,8 @@ async def main():
                 "region_id": blink.auth.region_id,
                 "client_id": blink.auth.client_id,
                 "account_id": blink.auth.account_id,
+                "user_id": getattr(blink.auth, 'user_id', None),
+                "refresh_token": getattr(blink.auth, 'refresh_token', None),
                 "device_id": config.get("device_id", "MagicMirror-BlinkCamera"),
                 "awaiting_2fa": False
             }
@@ -57,14 +71,14 @@ async def main():
 
         except Exception as e:
             err = str(e).lower()
-            if "2fa" in err or "pin" in err or "verify" in err:
-                # Save partial state
+            if any(x in err for x in ["2fa", "pin", "verify", "key", "code"]):
+                # Save partial state for 2FA
                 partial = {
                     "username": config["email"],
                     "device_id": config.get("device_id", "MagicMirror-BlinkCamera"),
                     "awaiting_2fa": True
                 }
-                for attr in ["token", "host", "region_id", "client_id", "account_id"]:
+                for attr in ["token", "host", "region_id", "client_id", "account_id", "user_id"]:
                     if hasattr(blink.auth, attr):
                         val = getattr(blink.auth, attr)
                         if val:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Blink Camera Fetch for MMM-BlinkCamera
-Fetches camera data and saves thumbnails to files
+Fetches camera data and saves thumbnails to files using saved credentials
 """
 
 import asyncio
@@ -15,6 +15,7 @@ async def main():
         from aiohttp import ClientSession
         from blinkpy.blinkpy import Blink
         from blinkpy.auth import Auth
+        from blinkpy.helpers.util import json_load
     except ImportError as e:
         print(json.dumps({"success": False, "error": str(e)}))
         return
@@ -38,25 +39,40 @@ async def main():
         print(json.dumps({"success": False, "requires_2fa": True}))
         return
 
+    if not creds.get("token") or not creds.get("account_id"):
+        print(json.dumps({"success": False, "requires_reauth": True, "error": "Incomplete credentials"}))
+        return
+
     async with ClientSession() as session:
         blink = Blink(session=session)
         
+        # Create auth with ALL saved data including token
         auth_data = {
-            "username": creds.get("username", config["email"]),
-            "password": config["password"],
+            "username": creds.get("username", config.get("email")),
+            "password": config.get("password"),
             "device_id": creds.get("device_id", "MagicMirror-BlinkCamera"),
             "token": creds.get("token"),
             "host": creds.get("host"),
             "region_id": creds.get("region_id"),
             "client_id": creds.get("client_id"),
-            "account_id": creds.get("account_id")
+            "account_id": creds.get("account_id"),
+            "user_id": creds.get("user_id"),
+            "refresh_token": creds.get("refresh_token"),
         }
         
         auth = Auth(auth_data, no_prompt=True, session=session)
         blink.auth = auth
 
         try:
-            await blink.start()
+            # If we have a token, try to use it directly without re-authenticating
+            # Set up URLs first
+            if hasattr(blink, 'setup_urls'):
+                await blink.setup_urls()
+            
+            # Then set up the rest
+            await blink.setup_post_verify()
+            
+            # Refresh to get camera data
             await blink.refresh()
             
             cameras_data = {}
@@ -77,9 +93,13 @@ async def main():
                     if hasattr(camera, "thumbnail") and camera.thumbnail:
                         thumb_url = camera.thumbnail
                         if thumb_url:
-                            full_url = f"https://{blink.auth.host}{thumb_url}" if not thumb_url.startswith("http") else thumb_url
+                            if thumb_url.startswith("http"):
+                                full_url = thumb_url
+                            else:
+                                full_url = f"https://{blink.auth.host}{thumb_url}"
                             
-                            async with session.get(full_url, headers={"token-auth": blink.auth.token}) as resp:
+                            headers = {"token-auth": blink.auth.token}
+                            async with session.get(full_url, headers=headers) as resp:
                                 if resp.status == 200:
                                     image_data = await resp.read()
                                     image_path = images_dir / f"{name}.jpg"
@@ -87,37 +107,25 @@ async def main():
                                     cam_info["hasImage"] = True
                                     cam_info["updated"] = datetime.now().strftime("%H:%M:%S")
                 except Exception as img_err:
-                    # Try snap_picture fallback
-                    try:
-                        await camera.snap_picture()
-                        await asyncio.sleep(3)
-                        await blink.refresh()
-                        
-                        if hasattr(camera, "thumbnail") and camera.thumbnail:
-                            thumb_url = camera.thumbnail
-                            full_url = f"https://{blink.auth.host}{thumb_url}"
-                            
-                            async with session.get(full_url, headers={"token-auth": blink.auth.token}) as resp:
-                                if resp.status == 200:
-                                    image_data = await resp.read()
-                                    image_path = images_dir / f"{name}.jpg"
-                                    image_path.write_bytes(image_data)
-                                    cam_info["hasImage"] = True
-                                    cam_info["updated"] = datetime.now().strftime("%H:%M:%S")
-                    except:
-                        pass
+                    # Log but continue
+                    sys.stderr.write(f"Image error for {name}: {img_err}\n")
                 
                 cameras_data[name] = cam_info
             
             # Update saved credentials with refreshed token
-            creds["token"] = blink.auth.token
+            if blink.auth.token:
+                creds["token"] = blink.auth.token
+            if hasattr(blink.auth, 'refresh_token') and blink.auth.refresh_token:
+                creds["refresh_token"] = blink.auth.refresh_token
             creds_file.write_text(json.dumps(creds, indent=2))
             
             print(json.dumps({"success": True, "cameras": cameras_data}))
 
         except Exception as e:
             err = str(e).lower()
-            if "token" in err or "auth" in err or "login" in err or "update" in err:
+            sys.stderr.write(f"Fetch error: {e}\n")
+            
+            if any(x in err for x in ["token", "auth", "login", "unauthorized", "401", "403"]):
                 print(json.dumps({"success": False, "requires_reauth": True, "error": str(e)}))
             else:
                 print(json.dumps({"success": False, "error": str(e)}))
