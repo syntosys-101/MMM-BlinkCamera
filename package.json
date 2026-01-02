@@ -1,0 +1,12 @@
+{
+  "name": "mmm-blinkcamera",
+  "version": "1.0.0",
+  "description": "MagicMirror² module for Blink security cameras",
+  "main": "MMM-BlinkCamera.js",
+  "scripts": {
+    "install": "pip3 install -r python/requirements.txt --break-system-packages || pip3 install -r python/requirements.txt",
+    "setup": "python3 python/setup_auth.py"
+  },
+  "keywords": ["magicmirror", "blink", "camera", "security"],
+  "license": "MIT"
+}

@@ -1,0 +1,218 @@
+/* MMM-BlinkCamera Styles */
+
+.blink-wrapper {
+    text-align: center;
+}
+
+/* Loading */
+.blink-loading {
+    padding: 20px;
+}
+
+.blink-spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    margin: 0 auto 10px;
+    animation: blink-spin 1s linear infinite;
+}
+
+@keyframes blink-spin {
+    to { transform: rotate(360deg); }
+}
+
+.blink-status {
+    color: #999;
+    font-size: 0.9em;
+}
+
+/* Error */
+.blink-error {
+    padding: 15px;
+    color: #ff6b6b;
+}
+
+.blink-error-icon {
+    font-size: 1.5em;
+    margin-right: 10px;
+}
+
+.blink-error-text {
+    font-size: 0.9em;
+}
+
+/* 2FA */
+.blink-2fa {
+    padding: 20px;
+    max-width: 300px;
+    margin: 0 auto;
+}
+
+.blink-2fa-icon {
+    font-size: 2em;
+    margin-bottom: 10px;
+}
+
+.blink-2fa-title {
+    font-size: 1.2em;
+    color: #fff;
+    margin-bottom: 8px;
+}
+
+.blink-2fa-text {
+    font-size: 0.9em;
+    color: #aaa;
+    margin-bottom: 5px;
+}
+
+.blink-2fa-cmd {
+    font-family: monospace;
+    font-size: 0.75em;
+    color: #6ecf6e;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 8px;
+    border-radius: 4px;
+    word-break: break-all;
+}
+
+/* Empty state */
+.blink-empty {
+    padding: 20px;
+    color: #888;
+    font-style: italic;
+}
+
+/* Carousel */
+.blink-carousel {
+    display: inline-block;
+}
+
+/* Grid */
+.blink-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.blink-grid-item {
+    flex: 0 0 auto;
+}
+
+/* Camera Card */
+.blink-camera-card {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    overflow: hidden;
+    display: inline-block;
+}
+
+.blink-camera-card.blink-small {
+    max-width: 180px !important;
+}
+
+.blink-image-container {
+    position: relative;
+    min-height: 150px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.blink-image {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.blink-placeholder {
+    width: 100%;
+    height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3em;
+    color: #555;
+}
+
+.blink-small .blink-placeholder {
+    height: 120px;
+    font-size: 2em;
+}
+
+.blink-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+    padding: 15px 10px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.blink-camera-name {
+    font-size: 1em;
+    font-weight: 500;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.blink-small .blink-camera-name {
+    font-size: 0.85em;
+}
+
+.blink-camera-status {
+    display: flex;
+    gap: 4px;
+    font-size: 0.9em;
+}
+
+.blink-motion-icon {
+    animation: blink-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes blink-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.blink-timestamp {
+    padding: 6px 10px;
+    font-size: 0.75em;
+    color: #888;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.blink-battery {
+    padding: 4px 10px 6px;
+    font-size: 0.75em;
+    color: #777;
+}
+
+/* Video */
+.blink-video-container {
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 8px;
+    overflow: hidden;
+    display: inline-block;
+}
+
+.blink-video-header {
+    padding: 8px 12px;
+    background: rgba(255, 50, 50, 0.3);
+    font-size: 0.95em;
+    color: #fff;
+}
+
+.blink-video-icon {
+    margin-right: 8px;
+    animation: blink-pulse 0.5s ease-in-out infinite;
+}
+
+.blink-video {
+    width: 100%;
+    max-width: 100%;
+    display: block;
+}

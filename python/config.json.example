@@ -1,0 +1,5 @@
+{
+    "email": "your-blink-email@example.com",
+    "password": "your-blink-password",
+    "device_id": "MagicMirror-BlinkCamera"
+}
