@@ -15,7 +15,6 @@ async def main():
         from aiohttp import ClientSession
         from blinkpy.blinkpy import Blink
         from blinkpy.auth import Auth
-        from blinkpy.helpers.util import json_load
     except ImportError as e:
         print(json.dumps({"success": False, "error": str(e)}))
         return
@@ -46,7 +45,7 @@ async def main():
     async with ClientSession() as session:
         blink = Blink(session=session)
         
-        # Create auth with ALL saved data including token
+        # Create auth with saved credentials including token
         auth_data = {
             "username": creds.get("username", config.get("email")),
             "password": config.get("password"),
@@ -64,16 +63,8 @@ async def main():
         blink.auth = auth
 
         try:
-            # If we have a token, try to use it directly without re-authenticating
-            # Set up URLs first
-            if hasattr(blink, 'setup_urls'):
-                await blink.setup_urls()
-            
-            # Then set up the rest
-            await blink.setup_post_verify()
-            
-            # Refresh to get camera data
-            await blink.refresh()
+            # Use start() - it should use the existing token if valid
+            await blink.start()
             
             cameras_data = {}
             
@@ -107,7 +98,6 @@ async def main():
                                     cam_info["hasImage"] = True
                                     cam_info["updated"] = datetime.now().strftime("%H:%M:%S")
                 except Exception as img_err:
-                    # Log but continue
                     sys.stderr.write(f"Image error for {name}: {img_err}\n")
                 
                 cameras_data[name] = cam_info
@@ -125,7 +115,8 @@ async def main():
             err = str(e).lower()
             sys.stderr.write(f"Fetch error: {e}\n")
             
-            if any(x in err for x in ["token", "auth", "login", "unauthorized", "401", "403"]):
+            # Check if we need re-authentication
+            if any(x in err for x in ["token", "auth", "login", "unauthorized", "401", "403", "2fa", "pin"]):
                 print(json.dumps({"success": False, "requires_reauth": True, "error": str(e)}))
             else:
                 print(json.dumps({"success": False, "error": str(e)}))
