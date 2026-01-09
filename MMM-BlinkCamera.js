@@ -12,7 +12,8 @@ Module.register("MMM-BlinkCamera", {
     defaults: {
         email: "",
         password: "",
-        updateInterval: 5 * 60 * 1000,      // 5 minutes
+        thumbnailRefreshMinutes: 5,          // Refresh thumbnails every X minutes
+        updateInterval: null,                // Alternative: milliseconds (overrides thumbnailRefreshMinutes)
         motionCheckInterval: 30 * 1000,      // 30 seconds
         showCameraName: true,
         showLastUpdate: true,
@@ -26,6 +27,7 @@ Module.register("MMM-BlinkCamera", {
         doorbellSound: "doorbell.mp3",       // Sound file to play
         doorbellDuration: 15000,             // How long to show doorbell popup (15s)
         doorbellVolume: 0.8,                 // Volume 0-1
+        alignment: "left",                   // Alignment: left, center, right
     },
 
     // Required scripts
@@ -41,7 +43,7 @@ Module.register("MMM-BlinkCamera", {
     // Module startup
     start: function() {
         Log.info("Starting module: " + this.name);
-        
+
         // State variables
         this.cameras = {};
         this.cameraNames = [];
@@ -55,6 +57,11 @@ Module.register("MMM-BlinkCamera", {
         this.doorbellAlert = null;
         this.doorbellTimer = null;
         this.audioElement = null;
+
+        // Convert thumbnailRefreshMinutes to updateInterval if not explicitly set
+        if (this.config.updateInterval === null) {
+            this.config.updateInterval = this.config.thumbnailRefreshMinutes * 60 * 1000;
+        }
 
         // Validate required config
         if (!this.config.email || !this.config.password) {
@@ -70,7 +77,7 @@ Module.register("MMM-BlinkCamera", {
     // Generate DOM content
     getDom: function() {
         const wrapper = document.createElement("div");
-        wrapper.className = "blink-wrapper";
+        wrapper.className = "blink-wrapper blink-align-" + this.config.alignment;
 
         // Doorbell alert (highest priority - shows over everything)
         if (this.doorbellAlert) {

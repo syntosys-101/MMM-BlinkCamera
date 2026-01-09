@@ -1,7 +1,20 @@
 /* MMM-BlinkCamera Styles */
 
 .blink-wrapper {
+    /* Base wrapper - alignment controlled by alignment classes */
+}
+
+/* Alignment classes */
+.blink-align-left {
+    text-align: left;
+}
+
+.blink-align-center {
     text-align: center;
+}
+
+.blink-align-right {
+    text-align: right;
 }
 
 /* Loading */
@@ -93,8 +106,20 @@
 .blink-grid {
     display: flex;
     flex-wrap: wrap;
-    justify-content: center;
     gap: 10px;
+}
+
+/* Grid alignment variants */
+.blink-align-left .blink-grid {
+    justify-content: flex-start;
+}
+
+.blink-align-center .blink-grid {
+    justify-content: center;
+}
+
+.blink-align-right .blink-grid {
+    justify-content: flex-end;
 }
 
 .blink-grid-item {
